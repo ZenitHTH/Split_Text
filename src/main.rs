@@ -3,31 +3,41 @@ mod tasks;
 use file_spliter::split_file;
 use std::env;
 use std::process;
-use tasks::create_task_list;
+use tasks::{SplitMode, build_split_plan};
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
         return Err(format!(
-            "Missing arguments.\nUsage: {} <file> <start-end>...",
-            args[0]
+            "Usage:\n  Manual: {} <file> 1-100\n  Auto:   {} <file> -n 3000",
+            args[0], args[0]
         ));
     }
 
-    // 1. Capture Arguments (Owned)
     let input_path = args[1].clone();
-    let range_args_vec = args[2..].to_vec();
 
-    // 2. Prepare Tasks (Calls src/tasks.rs)
-    let configs = create_task_list(input_path.clone(), range_args_vec)?;
+    // 1. Determine the Mode
+    let mode = if args[2] == "-n" {
+        if args.len() < 4 {
+            return Err("Missing count for -n".to_string());
+        }
+        let size = args[3].parse::<usize>().map_err(|_| "Invalid number")?;
 
-    println!(
-        "✅ File found. Configuration Valid. Processing '{}'...",
-        input_path
-    );
+        println!("🔄 Auto-Mode selected ({} lines/chunk)", size);
+        SplitMode::Auto(size)
+    } else {
+        println!("🔧 Manual-Mode selected");
+        let ranges = args[2..].to_vec();
+        SplitMode::Manual(ranges)
+    };
 
-    // 3. Execute Split (Calls src/lib.rs)
+    // 2. Build Plan (Single function call now!)
+    let configs = build_split_plan(input_path.clone(), mode)?;
+
+    println!("✅ Plan created: {} parts.", configs.len());
+
+    // 3. Execute
     let success_msg = split_file(&input_path, &configs)?;
 
     println!("✅ {}", success_msg);
