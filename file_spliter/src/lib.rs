@@ -1,11 +1,7 @@
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
-
-/// # SplitConfig
-/// Holds the configuration for a single output file.
-/// We derive Serialize/Deserialize so this works with Tauri/JSON.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub struct SplitConfig {
     pub start: usize,
     pub end: usize,
@@ -13,7 +9,6 @@ pub struct SplitConfig {
 }
 
 impl SplitConfig {
-    /// Creates a new configuration with strict validation.
     pub fn new(start: usize, end: usize, output_path: String) -> Result<Self, String> {
         if start == 0 {
             return Err(format!(
@@ -35,77 +30,91 @@ impl SplitConfig {
     }
 }
 
-/// # Split File Function
-/// 1. Checks file existence & empty status.
-/// 2. splits the file.
-/// 3. Verifies if requested lines actually existed.
-pub fn split_file<P: AsRef<Path>>(input_path: P, parts: &[SplitConfig]) -> Result<String, String> {
-    let path_ref = input_path.as_ref();
-
-    // ---------------------------------------------------------
-    // 1. PRE-CHECK: Does file exist and have data?
-    // ---------------------------------------------------------
-    if !path_ref.exists() {
-        return Err(format!("Input file not found: {}", path_ref.display()));
+// =========================================================================
+// HELPER 1: VALIDATION
+// Checks if the input file exists and has content.
+// =========================================================================
+fn validate_file(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("Input file not found: {}", path.display()));
     }
 
-    let metadata = fs::metadata(path_ref).map_err(|e| e.to_string())?;
+    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
     if metadata.len() == 0 {
-        return Err(format!(
-            "Input file is empty (0 bytes): {}",
-            path_ref.display()
-        ));
+        return Err(format!("Input file is empty (0 bytes): {}", path.display()));
     }
 
-    let input_file = File::open(path_ref).map_err(|e| format!("Open error: {}", e))?;
-    let reader = BufReader::new(input_file);
+    Ok(())
+}
 
-    // ---------------------------------------------------------
-    // 2. PREPARE WRITERS
-    // ---------------------------------------------------------
-    let mut writers: Vec<BufWriter<File>> = Vec::new();
+// =========================================================================
+// HELPER 2: CREATE WRITERS
+// Opens all output files at once and prepares them for writing.
+// =========================================================================
+fn create_writers(parts: &[SplitConfig]) -> Result<Vec<BufWriter<File>>, String> {
+    let mut writers = Vec::new();
+
     for part in parts {
         let f = File::create(&part.output_path)
-            .map_err(|e| format!("Cannot create {}: {}", part.output_path, e))?;
+            .map_err(|e| format!("Cannot create output file '{}': {}", part.output_path, e))?;
         writers.push(BufWriter::new(f));
     }
 
-    // ---------------------------------------------------------
-    // 3. PROCESS LINES
-    // ---------------------------------------------------------
-    let mut total_lines_read = 0;
+    Ok(writers)
+}
+
+// =========================================================================
+// HELPER 3: CORE PROCESSING LOOP
+// Reads input line-by-line and writes to the correct output(s).
+// Returns the total number of lines read.
+// =========================================================================
+fn process_lines(
+    reader: BufReader<File>,
+    parts: &[SplitConfig],
+    mut writers: Vec<BufWriter<File>>,
+) -> Result<usize, String> {
+    let mut total_lines = 0;
 
     for (index, line_result) in reader.lines().enumerate() {
+        // Read the line safely
         let line = line_result.map_err(|e| format!("Read error at line {}: {}", index + 1, e))?;
-        let current_line_num = index + 1;
-        total_lines_read = current_line_num;
+        let current_line = index + 1;
+        total_lines = current_line;
 
+        // Check which file needs this line
         for (i, config) in parts.iter().enumerate() {
-            if current_line_num >= config.start && current_line_num <= config.end {
-                writeln!(writers[i], "{}", line).map_err(|e| format!("Write error: {}", e))?;
+            if current_line >= config.start && current_line <= config.end {
+                // Write to the specific writer
+                writeln!(writers[i], "{}", line)
+                    .map_err(|e| format!("Write error to '{}': {}", config.output_path, e))?;
             }
         }
     }
 
-    // Flush buffers to ensure data is on disk
+    // Flush all buffers to disk to ensure data is saved
     for mut w in writers {
-        w.flush().map_err(|e| format!("Disk error: {}", e))?;
+        w.flush().map_err(|e| format!("Disk save error: {}", e))?;
     }
 
-    // ---------------------------------------------------------
-    // 4. POST-CHECK: Did the file have enough lines?
-    // ---------------------------------------------------------
+    Ok(total_lines)
+}
+
+// =========================================================================
+// HELPER 4: CLEANUP
+// Checks if any file turned out empty because the input was too short.
+// =========================================================================
+fn verify_and_cleanup(parts: &[SplitConfig], total_lines: usize) -> Result<(), String> {
     let mut errors = Vec::new();
 
     for part in parts {
         // If the file ended before this part even started
-        if total_lines_read < part.start {
+        if total_lines < part.start {
             errors.push(format!(
                 "❌ Range {}-{} failed: Input file only has {} lines.",
-                part.start, part.end, total_lines_read
+                part.start, part.end, total_lines
             ));
 
-            // Delete the empty file to keep things clean
+            // Delete the empty garbage file
             if let Err(e) = fs::remove_file(&part.output_path) {
                 eprintln!(
                     "Warning: Could not cleanup empty file {}: {}",
@@ -119,9 +128,31 @@ pub fn split_file<P: AsRef<Path>>(input_path: P, parts: &[SplitConfig]) -> Resul
         return Err(errors.join("\n"));
     }
 
-    Ok(format!(
-        "Success! Processed {} lines into {} files.",
-        total_lines_read,
-        parts.len()
-    ))
+    Ok(())
+}
+
+// =========================================================================
+// MAIN PUBLIC FUNCTION
+// Now acts as a simple "Coordinator" calling the steps above.
+// =========================================================================
+pub fn split_file<P: AsRef<Path>>(input_path: P, parts: &[SplitConfig]) -> Result<String, String> {
+    let path_ref = input_path.as_ref();
+
+    // Step 1: Validate Input
+    validate_file(path_ref)?;
+
+    // Step 2: Open Input Reader
+    let input_file = File::open(path_ref).map_err(|e| format!("Open error: {}", e))?;
+    let reader = BufReader::new(input_file);
+
+    // Step 3: Prepare Output Writers
+    let writers = create_writers(parts)?;
+
+    // Step 4: Run the Processing Loop
+    let total_lines = process_lines(reader, parts, writers)?;
+
+    // Step 5: Post-Process Verification
+    verify_and_cleanup(parts, total_lines)?;
+
+    Ok(format!("Success! Processed {} lines.", total_lines))
 }
