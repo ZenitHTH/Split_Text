@@ -9,47 +9,54 @@ use tasks::{SplitMode, build_split_plan};
 enum AppMode {
     Download { video_id: String, lang: String },
     Split { input_path: String, mode: SplitMode },
+    Help,
+}
+
+fn print_usage(program_name: &str) {
+    println!("Usage:");
+    println!("  nth      {} <file> <size>     | Split file into chunks of <size> lines", program_name);
+    println!("  manual   {} <file> <range>... | Split specific ranges (e.g. 1-100 200-300)", program_name);
+    println!("  download {} <video_id> [lang] | Download YouTube subtitles (default lang: en)", program_name);
+    println!("  help     {}                   | Show this help message", program_name);
 }
 
 fn parse_args(args: &[String]) -> Result<AppMode, String> {
     if args.len() < 2 {
-        return Err(format!(
-            "Usage:\n  Split:    {} <file> 1-100\n  Auto:     {} <file> -n 3000\n  Download: {} download <video_id> [lang_code]",
-            args[0], args[0], args[0]
-        ));
+        return Ok(AppMode::Help);
     }
 
-    if args[1] == "download" {
-        if args.len() < 3 {
-            return Err("Usage: download <video_id_or_url> [lang_code] (default: en)".to_string());
+    let command = args[1].as_str();
+
+    match command {
+        "help" => Ok(AppMode::Help),
+        "download" => {
+            if args.len() < 3 {
+                return Err("Usage: download <video_id> [lang]".to_string());
+            }
+            let video_id = args[2].clone();
+            let lang = if args.len() > 3 { args[3].clone() } else { "en".to_string() };
+            Ok(AppMode::Download { video_id, lang })
         }
-        let video_id = args[2].clone();
-        let lang = if args.len() > 3 { args[3].clone() } else { "en".to_string() };
-        return Ok(AppMode::Download { video_id, lang });
-    }
-
-    if args.len() < 3 {
-        return Err(format!(
-            "Usage:\n  Manual: {} <file> 1-100\n  Auto:   {} <file> -n 3000",
-            args[0], args[0]
-        ));
-    }
-
-    let input_path = args[1].clone();
-    let split_mode = if args[2] == "-n" {
-        if args.len() < 4 {
-            return Err("Missing count for -n".to_string());
+        "nth" => {
+            if args.len() < 4 {
+                return Err("Usage: nth <file> <size>".to_string());
+            }
+            let input_path = args[2].clone();
+            let size = args[3].parse::<usize>().map_err(|_| "Invalid chunk size number")?;
+            println!("🔄 'nth' (Auto) Mode selected ({} lines/chunk)", size);
+            Ok(AppMode::Split { input_path, mode: SplitMode::Auto(size) })
         }
-        let size = args[3].parse::<usize>().map_err(|_| "Invalid number")?;
-        println!("🔄 Auto-Mode selected ({} lines/chunk)", size);
-        SplitMode::Auto(size)
-    } else {
-        println!("🔧 Manual-Mode selected");
-        let ranges = args[2..].to_vec();
-        SplitMode::Manual(ranges)
-    };
-
-    Ok(AppMode::Split { input_path, mode: split_mode })
+        "manual" => {
+            if args.len() < 4 {
+                return Err("Usage: manual <file> <range>...".to_string());
+            }
+            let input_path = args[2].clone();
+            let ranges = args[3..].to_vec();
+            println!("🔧 'manual' Mode selected");
+            Ok(AppMode::Split { input_path, mode: SplitMode::Manual(ranges) })
+        }
+        _ => Err(format!("Unknown command: '{}'. Use 'nth', 'manual', or 'download'.", command)),
+    }
 }
 
 fn run() -> Result<(), String> {
@@ -57,6 +64,10 @@ fn run() -> Result<(), String> {
     let mode = parse_args(&args)?;
 
     match mode {
+        AppMode::Help => {
+            print_usage(&args[0]);
+            Ok(())
+        }
         AppMode::Download { video_id, lang } => {
             match download_subtitle(&video_id, &lang) {
                 Ok(filename) => {
