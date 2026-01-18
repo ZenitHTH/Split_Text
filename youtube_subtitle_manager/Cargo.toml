@@ -1,0 +1,9 @@
+[package]
+name = "youtube_subtitle_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yt-transcript-rs = "0.1.8"
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "1.0"

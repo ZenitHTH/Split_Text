@@ -2,10 +2,10 @@ mod tasks;
 
 use file_spliter::split_file;
 use std::env;
-use std::io::Write;
+
 use std::process;
 use tasks::{SplitMode, build_split_plan};
-use yt_transcript_rs::YouTubeTranscriptApi;
+use youtube_subtitle_manager::{download_subtitle, extract_id, scan_subtitles};
 
 enum AppMode {
     Download { video_id: String, lang: String },
@@ -100,27 +100,6 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
     }
 }
 
-fn extract_id(input: &str) -> &str {
-    if input.contains("v=") {
-        input
-            .split("v=")
-            .nth(1)
-            .and_then(|s| s.split('&').next())
-            .unwrap_or(input)
-    } else {
-        input
-    }
-}
-
-fn format_timestamp(seconds: f64) -> String {
-    let total_ms = (seconds * 1000.0) as u64;
-    let s = total_ms / 1000;
-    let ms = total_ms % 1000;
-    let m = s / 60;
-    let h = m / 60;
-    format!("{:02}:{:02}:{:02},{:03}", h, m % 60, s % 60, ms)
-}
-
 #[tokio::main]
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -135,19 +114,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let id = extract_id(&video_id);
             println!("🔍 Scanning subtitles for ID: {}", id);
 
-            let api = YouTubeTranscriptApi::new(None, None, None)?;
-            let transcripts = api.list_transcripts(id).await?;
+            let transcripts = scan_subtitles(&video_id).await?;
 
             println!("{:<10} | {:<25} | {:<10}", "Code", "Language", "Type");
             println!("{:-<10}-+-{:-<25}-+-{:-<10}", "", "", "");
 
-            for t in transcripts.transcripts() {
-                let kind = if t.is_generated() { "Auto" } else { "Manual" };
+            for t in transcripts {
+                let kind = if t.is_generated { "Auto" } else { "Manual" };
                 println!(
                     "{:<10} | {:<25} | {:<10}",
-                    t.language_code(),
-                    t.language(),
-                    kind
+                    t.language_code, t.language, kind
                 );
             }
             Ok(())
@@ -156,34 +132,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let id = extract_id(&video_id);
             println!("⬇️  Downloading subtitle for ID: {} (Lang: {})", id, lang);
 
-            let api = YouTubeTranscriptApi::new(None, None, None)?;
-
-            // Try to fetch the transcript
-            let transcript = api.fetch_transcript(id, &[&lang], false).await?;
-
-            // Generate Filename
-            // Note: This lib doesn't fetch video metadata (title) by default in fetch_transcript.
-            // We use the ID for the filename to be safe, or you could call fetch_video_details if needed.
-            let filename = format!("{}_{}.srt", id, lang);
-            let mut file = std::fs::File::create(&filename)?;
-
-            let mut counter = 1;
-            for part in transcript.parts() {
-                let start = part.start;
-                let duration = part.duration;
-                let end = start + duration;
-                let text = &part.text;
-
-                writeln!(file, "{}", counter)?;
-                writeln!(
-                    file,
-                    "{} --> {}",
-                    format_timestamp(start),
-                    format_timestamp(end)
-                )?;
-                writeln!(file, "{}\n", text)?;
-                counter += 1;
-            }
+            let filename = download_subtitle(&video_id, Some(lang)).await?;
 
             println!("✅ Successfully saved subtitle to: {}", filename);
             Ok(())

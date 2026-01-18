@@ -8,3 +8,4 @@ file_spliter = { path = "file_spliter" }
 yt-transcript-rs = "0.1.8"
 serde = { version = "1.0", features = ["derive"] }
 tokio = "^1.45.0"
+youtube_subtitle_manager = { path = "youtube_subtitle_manager" }
