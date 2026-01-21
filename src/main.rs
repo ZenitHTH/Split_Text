@@ -7,7 +7,10 @@ use std::process;
 use tasks::{SplitMode, build_split_plan};
 use youtube_subtitle_manager::{download_subtitle, extract_id, scan_subtitles};
 
+slint::include_modules!();
+
 enum AppMode {
+    Ui,
     Download { video_id: String, lang: String },
     Scan { video_id: String },
     Split { input_path: String, mode: SplitMode },
@@ -16,6 +19,7 @@ enum AppMode {
 
 fn print_usage(program_name: &str) {
     println!("Usage:");
+    println!("  (no args)                        | Launch GUI mode",);
     println!(
         "  nth      {} <file> <size>     | Split file into chunks of <size> lines",
         program_name
@@ -40,13 +44,14 @@ fn print_usage(program_name: &str) {
 
 fn parse_args(args: &[String]) -> Result<AppMode, String> {
     if args.len() < 2 {
-        return Ok(AppMode::Help);
+        return Ok(AppMode::Ui);
     }
 
     let command = args[1].as_str();
 
     match command {
-        "help" => Ok(AppMode::Help),
+        "ui" => Ok(AppMode::Ui),
+        "help" | "--help" | "-h" => Ok(AppMode::Help),
         "scan" => {
             if args.len() < 3 {
                 return Err("Usage: scan <video_id_or_url>".to_string());
@@ -94,7 +99,7 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
             })
         }
         _ => Err(format!(
-            "Unknown command: '{}'. Use 'nth', 'manual', 'scan', or 'download'.",
+            "Unknown command: '{}'. Use 'nth', 'manual', 'scan', 'download', or run without args for UI.",
             command
         )),
     }
@@ -106,6 +111,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mode = parse_args(&args).map_err(|e| e.to_string())?;
 
     match mode {
+        AppMode::Ui => {
+            let ui = AppWindow::new()?;
+            let ui_handle = ui.as_weak();
+
+            ui.on_request_scan(move |video_id| {
+                let _ui = ui_handle.unwrap();
+                println!("Scanning ID: {}", video_id);
+                // 这里可以扩展 GUI 的逻辑
+            });
+
+            ui.run()?;
+            Ok(())
+        }
         AppMode::Help => {
             print_usage(&args[0]);
             Ok(())
