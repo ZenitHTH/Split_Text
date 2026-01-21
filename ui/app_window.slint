@@ -1,0 +1,28 @@
+import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    width: 400px;
+    height: 300px;
+    title: "YouTube Subtitle Manager";
+
+    callback request-scan(string);
+
+    VerticalBox {
+        alignment: start;
+        Text {
+            text: "Video ID or URL:";
+            font-size: 16px;
+        }
+
+        input := LineEdit {
+            placeholder-text: "Enter YouTube Link here";
+        }
+
+        Button {
+            text: "Scan Subtitles";
+            clicked => {
+                root.request-scan(input.text);
+            }
+        }
+    }
+}
