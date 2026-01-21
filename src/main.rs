@@ -105,6 +105,14 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
     }
 }
 
+// Helper to convert bytes (from reqwest) to slint::Image
+// Helper to decode image to raw rgba
+fn decode_image_data(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
+    let img = image::load_from_memory(bytes)?;
+    let rgba = img.to_rgba8();
+    Ok((rgba.width(), rgba.height(), rgba.into_raw()))
+}
+
 #[tokio::main]
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -116,9 +124,38 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let ui_handle = ui.as_weak();
 
             ui.on_request_scan(move |video_id| {
-                let _ui = ui_handle.unwrap();
-                println!("Scanning ID: {}", video_id);
-                // 这里可以扩展 GUI 的逻辑
+                let ui_handle = ui_handle.clone();
+                let video_id = video_id.to_string();
+                tokio::spawn(async move {
+                    println!("Scanning ID: {}", video_id);
+                    let id = extract_id(&video_id);
+                    let url = format!("https://img.youtube.com/vi/{}/0.jpg", id);
+
+                    match reqwest::get(&url).await {
+                        Ok(response) => {
+                            if let Ok(img_bytes) = response.bytes().await {
+                                match decode_image_data(&img_bytes) {
+                                    Ok((width, height, data)) => {
+                                        let _ = slint::invoke_from_event_loop(move || {
+                                            if let Some(ui) = ui_handle.upgrade() {
+                                                let buffer =
+                                                    slint::SharedPixelBuffer::clone_from_slice(
+                                                        &data, width, height,
+                                                    );
+                                                let img = slint::Image::from_rgba8(buffer);
+                                                ui.set_thumbnail_image(img);
+                                            }
+                                        });
+                                    }
+                                    Err(e) => eprintln!("Failed to decode image: {}", e),
+                                }
+                            } else {
+                                eprintln!("Failed to get bytes from response");
+                            }
+                        }
+                        Err(e) => eprintln!("Error fetching thumbnail: {}", e),
+                    }
+                });
             });
 
             ui.run()?;

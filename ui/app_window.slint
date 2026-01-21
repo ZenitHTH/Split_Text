@@ -1,11 +1,14 @@
 import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
-    width: 400px;
-    height: 300px;
+    width: 800px;
+    height: 600px;
     title: "YouTube Subtitle Manager";
 
     callback request-scan(string);
+
+    in-out property <string> thumbnail-url;
+    in property <image> thumbnail-image;
 
     VerticalBox {
         alignment: start;
@@ -23,6 +26,20 @@ export component AppWindow inherits Window {
             clicked => {
                 root.request-scan(input.text);
             }
+        }
+
+        Text {
+            text: "Image Link: " + root.thumbnail-url;
+            visible: root.thumbnail-url != "";
+            wrap: word-wrap;
+        }
+        
+        // Placeholder for the image (requires rust-side loading)
+        Image {
+             source: root.thumbnail-image;
+             width: 320px;
+             height: 180px;
+             image-fit: contain;
         }
     }
 }
