@@ -123,13 +123,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let ui = AppWindow::new()?;
             let ui_handle = ui.as_weak();
 
-            ui.on_request_scan(move |video_id| {
+            ui.on_request_scan(move |url| {
+                let video_id = extract_id(&url).to_string();
                 let ui_handle = ui_handle.clone();
-                let video_id = video_id.to_string();
                 tokio::spawn(async move {
                     println!("Scanning ID: {}", video_id);
-                    let id = extract_id(&video_id);
-                    let url = format!("https://img.youtube.com/vi/{}/0.jpg", id);
+                    let url = format!("https://img.youtube.com/vi/{}/0.jpg", video_id);
 
                     match reqwest::get(&url).await {
                         Ok(response) => {
