@@ -1,3 +1,4 @@
+mod slint_ui;
 mod tasks;
 
 use file_spliter::split_file;
@@ -7,7 +8,8 @@ use std::process;
 use tasks::{SplitMode, build_split_plan};
 use youtube_subtitle_manager::{download_subtitle, extract_id, scan_subtitles};
 
-slint::include_modules!();
+use slint::ComponentHandle;
+use slint_ui::AppWindow;
 
 enum AppMode {
     Ui,
@@ -105,35 +107,6 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
     }
 }
 
-// Helper to decode image to raw rgba
-fn decode_image_data(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
-    let img = image::load_from_memory(bytes)?;
-    let rgba = img.to_rgba8();
-    Ok((rgba.width(), rgba.height(), rgba.into_raw()))
-}
-
-async fn fetch_and_update_thumbnail(
-    video_id: String,
-    ui_handle: slint::Weak<AppWindow>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Scanning ID: {}", video_id);
-    let url = format!("https://img.youtube.com/vi/{}/0.jpg", video_id);
-
-    let response = reqwest::get(&url).await?;
-    let img_bytes = response.bytes().await?;
-    let (width, height, data) = decode_image_data(&img_bytes)?;
-
-    let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui_handle.upgrade() {
-            let buffer = slint::SharedPixelBuffer::clone_from_slice(&data, width, height);
-            let img = slint::Image::from_rgba8(buffer);
-            ui.set_thumbnail_image(img);
-        }
-    });
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -148,7 +121,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let video_id = extract_id(&url).to_string();
                 let ui_handle = ui_handle.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = fetch_and_update_thumbnail(video_id, ui_handle).await {
+                    if let Err(e) = slint_ui::fetch_and_update_thumbnail(video_id, ui_handle).await
+                    {
                         eprintln!("Thumbnail error: {}", e);
                     }
                 });
