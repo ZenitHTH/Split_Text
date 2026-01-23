@@ -5,6 +5,7 @@ import {
     HorizontalBox,
     ListView,
     ScrollView,
+    TabWidget,
 } from "std-widgets.slint";
 
 export struct SubtitleItem {
@@ -16,10 +17,10 @@ export struct SubtitleItem {
 export component AppWindow inherits Window {
     width: 800px;
     height: 600px;
-    title: "YouTube Subtitle Manager";
+    title: "Split Text & YouTube Tools";
 
+    // Youtube Callbacks & Properties
     callback check-link(string);
-
     in-out property <string> thumbnail-url;
     in property <image> thumbnail-image;
     in property <string> status-message;
@@ -29,116 +30,245 @@ export component AppWindow inherits Window {
     in property <string> video-author: "Channel";
     in property <[SubtitleItem]> subtitle-list;
     in-out property <string> selected-subtitle-code;
-
     callback select-save-location(string);
     callback download-subtitle(string, string, string);
 
-    VerticalBox {
-        alignment: start;
-        Text {
-            text: "Video ID or URL:";
-            font-size: 16px;
-        }
+    // Split Text Callbacks & Properties
+    in-out property <string> split-input-path;
+    in-out property <string> split-output-path;
+    in-out property <string> split-param: "1000"; // Chunk size or range
+    in-out property <int> split-mode-index: 0; // 0=Auto, 1=Manual
+    in property <string> split-status-message;
+    in property <color> split-status-color;
+    callback pick-split-file();
+    callback pick-output-folder();
+    callback execute-split(string, string, int, string);
 
-        input := LineEdit {
-            placeholder-text: "Enter YouTube Link here";
-        }
-
-        Button {
-            text: "Check Link";
-            clicked => {
-                root.check-link(input.text);
-            }
-        }
-
-        Text {
-            // Youtube Title
-            text: root.status-message;
-            color: root.status-color;
-            visible: root.status-message != "";
-            horizontal-alignment: center;
-        }
-
-        HorizontalBox {
-            Image {
-                width: 320px;
-                height: 240px;
-                source: root.thumbnail-image;
-                image-fit: contain;
-            }
-
+    TabWidget {
+        Tab {
+            title: "YouTube Downloader";
             VerticalBox {
-                //show Title of Youtube Video
+                alignment: start;
                 Text {
-                    text: root.video-title;
+                    text: "Video ID or URL:";
                     font-size: 16px;
-                    wrap: word-wrap;
-                }
-                //show Channel of Youtube Video
-                Text {
-                    text: root.video-author;
-                    font-size: 14px;
-                    color: grey;
-                    wrap: word-wrap;
                 }
 
-                ListView {
-                    for item in root.subtitle-list: Rectangle {
-                        height: 30px;
-                        background: root.selected-subtitle-code == item.code ? #e0e0e0 : white;
-                        width: parent.width;
-                        TouchArea {
-                            clicked => {
-                                root.selected-subtitle-code = item.code;
-                            }
+                input := LineEdit {
+                    placeholder-text: "Enter YouTube Link here";
+                }
+
+                Button {
+                    text: "Check Link";
+                    clicked => {
+                        root.check-link(input.text);
+                    }
+                }
+
+                Text {
+                    text: root.status-message;
+                    color: root.status-color;
+                    visible: root.status-message != "";
+                    horizontal-alignment: center;
+                }
+
+                HorizontalBox {
+                    Image {
+                        width: 320px;
+                        height: 240px;
+                        source: root.thumbnail-image;
+                        image-fit: contain;
+                        visible: root.thumbnail-image.width > 0;
+                    }
+
+                    VerticalBox {
+                        visible: root.video-title != "Title";
+                        Text {
+                            text: root.video-title;
+                            font-size: 16px;
+                            wrap: word-wrap;
                         }
 
-                        HorizontalBox {
-                            Text {
-                                text: item.name + " (" + item.code + ")" + (item.is_generated ? " [Auto]" : "");
-                                color: black;
-                                font-size: 14px;
-                                vertical-alignment: center;
+                        Text {
+                            text: root.video-author;
+                            font-size: 14px;
+                            color: grey;
+                            wrap: word-wrap;
+                        }
+
+                        ListView {
+                            for item in root.subtitle-list: Rectangle {
+                                height: 30px;
+                                background: root.selected-subtitle-code == item.code ? #e0e0e0 : white;
+                                width: parent.width;
+                                TouchArea {
+                                    clicked => {
+                                        root.selected-subtitle-code = item.code;
+                                    }
+                                }
+
+                                HorizontalBox {
+                                    Text {
+                                        text: item.name + " (" + item.code + ")" + (item.is_generated ? " [Auto]" : "");
+                                        color: black;
+                                        font-size: 14px;
+                                        vertical-alignment: center;
+                                    }
+                                }
                             }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Save Path: " + (root.save-path == "" ? "(None)" : root.save-path);
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    Button {
+                        text: "Select Save Location";
+                        clicked => {
+                            root.select-save-location(input.text);
+                        }
+                    }
+
+                    Button {
+                        text: "Download Subtitle";
+                        enabled: root.save-path != "" && input.text != "" && root.selected-subtitle-code != "";
+                        clicked => {
+                            root.download-subtitle(input.text, root.save-path, root.selected-subtitle-code);
                         }
                     }
                 }
             }
         }
 
-        Text {
-            text: "Image Link: " + root.thumbnail-url;
-            visible: root.thumbnail-url != "";
-            wrap: word-wrap;
-        }
-        
-        // Placeholder for the image (requires rust-side loading)
-        Rectangle {
-            vertical-stretch: 1; // Fill available vertical space
- Rectangle {
-                min-width: 16px;
-                min-height: 16px; /* @lsp:ignore-node */ }
-        }
+        Tab {
+            title: "Split Text";
+            VerticalBox {
+                alignment: start;
+                spacing: 16px;
 
-        Text {
-            text: "Save Path: " + (root.save-path == "" ? "(None)" : root.save-path);
-            wrap: word-wrap;
-        }
-
-        HorizontalLayout {
-            spacing: 10px;
-            Button {
-                text: "Select Save Location";
-                clicked => {
-                    root.select-save-location(input.text);
+                Text {
+                    text: "1. Select File to Split";
+                    font-size: 16px;
+                    font-weight: 700;
                 }
-            }
 
-            Button {
-                text: "Download Subtitle";
-                enabled: root.save-path != "" && input.text != "" && root.selected-subtitle-code != "";
-                clicked => {
-                    root.download-subtitle(input.text, root.save-path, root.selected-subtitle-code);
+                HorizontalBox {
+                    Text {
+                        text: root.split-input-path == "" ? "No file selected" : root.split-input-path;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+
+                    Button {
+                        text: "Browse File...";
+                        clicked => {
+                            root.pick-split-file();
+                        }
+                        max-width: 150px;
+                    }
+                }
+
+                Text {
+                    text: "2. Output Directory (Optional)";
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                HorizontalBox {
+                    Text {
+                        text: root.split-output-path == "" ? "Same as input" : root.split-output-path;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+
+                    Button {
+                        text: "Browse Folder...";
+                        clicked => {
+                            root.pick-output-folder();
+                        }
+                        max-width: 150px;
+                    }
+                }
+
+                Text {
+                    text: "3. Configuration";
+                    font-size: 16px;
+                    font-weight: 700;
+                }
+
+                HorizontalBox {
+                    spacing: 20px;
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: root.split-mode-index == 0 ? blue : grey;
+                        border-radius: 4px;
+                        TouchArea {
+                            clicked => {
+                                root.split-mode-index = 0;
+                            }
+                        }
+
+                        HorizontalBox {
+                            Text {
+                                text: "Auto (Every N lines)";
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: root.split-mode-index == 1 ? blue : grey;
+                        border-radius: 4px;
+                        TouchArea {
+                            clicked => {
+                                root.split-mode-index = 1;
+                            }
+                        }
+
+                        HorizontalBox {
+                            Text {
+                                text: "Manual (Ranges)";
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                HorizontalBox {
+                    Text {
+                        text: root.split-mode-index == 0 ? "Lines per chunk:" : "Ranges (e.g. 1-100 200-300):";
+                        vertical-alignment: center;
+                    }
+
+                    LineEdit {
+                        text <=> root.split-param;
+                        placeholder-text: root.split-mode-index == 0 ? "1000" : "1-100 101-200";
+                    }
+                }
+
+                Button {
+                    text: "Split File";
+                    primary: true;
+                    height: 40px;
+                    enabled: root.split-input-path != "";
+                    clicked => {
+                        root.execute-split(root.split-input-path, root.split-output-path, root.split-mode-index, root.split-param);
+                    }
+                }
+
+                Text {
+                    text: root.split-status-message;
+                    color: root.split-status-color;
+                    font-size: 14px;
+                    wrap: word-wrap;
                 }
             }
         }
