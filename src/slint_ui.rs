@@ -178,6 +178,12 @@ pub fn run_ui() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn setup_split_handlers(ui: &AppWindow) {
+    setup_file_picker_handler(ui);
+    setup_folder_picker_handler(ui);
+    setup_execute_split_handler(ui);
+}
+
+fn setup_file_picker_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_pick_split_file(move || {
         let ui_handle = ui_handle.clone();
@@ -196,7 +202,9 @@ fn setup_split_handlers(ui: &AppWindow) {
             }
         });
     });
+}
 
+fn setup_folder_picker_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_pick_output_folder(move || {
         let ui_handle = ui_handle.clone();
@@ -215,7 +223,9 @@ fn setup_split_handlers(ui: &AppWindow) {
             }
         });
     });
+}
 
+fn setup_execute_split_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_execute_split(move |input_path, output_path, mode_index, param| {
         let input_path = input_path.to_string();
