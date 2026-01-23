@@ -84,7 +84,10 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
             println!("🔄 'nth' (Auto) Mode selected ({} lines/chunk)", size);
             Ok(AppMode::Split {
                 input_path,
-                mode: SplitMode::Auto(size),
+                mode: SplitMode::Auto {
+                    chunk_size: size,
+                    output_dir: None,
+                },
             })
         }
         "manual" => {
@@ -96,7 +99,10 @@ fn parse_args(args: &[String]) -> Result<AppMode, String> {
             println!("🔧 'manual' Mode selected");
             Ok(AppMode::Split {
                 input_path,
-                mode: SplitMode::Manual(ranges),
+                mode: SplitMode::Manual {
+                    ranges,
+                    output_dir: None,
+                },
             })
         }
         _ => Err(format!(
