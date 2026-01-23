@@ -12,7 +12,8 @@ Originally, this program was written to split subtitle files (SRT) for a streame
 
 ## ✨ Features
 
-- **GUI Mode**: A graphical user interface to easily interact with the tool, including displaying YouTube video thumbnails.
+- **GUI Mode**: A graphical user interface to easily interact with the tool. It supports displaying video thumbnails, fetching metadata (title, author), listing available subtitles, and downloading them.
+
 - **Scan Subtitles**: List all available subtitle languages for a specific YouTube video.
 - **Download Subtitles**: Download subtitles (SRT format) for a specific YouTube video.
 - **Split File (Auto)**: Split a large file into smaller chunks based on a fixed number of lines.
@@ -27,7 +28,12 @@ Run without arguments to open the Graphical User Interface.
 ```bash
 cargo run
 ```
-The GUI now allows scanning video IDs and displays the video thumbnail!
+The GUI allows you to:
+- Input a YouTube URL to check video status.
+- View video thumbnail, title, and channel name.
+- See available subtitle languages.
+- Download subtitles to a selected location.
+- Split text files using the split tool tab.
 
 ### 1. Scan for Subtitles
 Check what languages are available for a video.
