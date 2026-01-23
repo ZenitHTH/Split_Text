@@ -33,44 +33,67 @@ async fn fetch_thumbnail_data(
 
 /// Orchestrates checking video status, fetching metadata, and updating the UI.
 pub async fn check_video_status(video_id: String, ui_handle: slint::Weak<AppWindow>) {
-    // 1. Fetch Thumbnail Data
-    let thumbnail_result = fetch_thumbnail_data(&video_id).await;
+    if verify_video_thumbnail(&video_id, &ui_handle).await {
+        fetch_and_update_details(&video_id, &ui_handle).await;
+    }
+}
 
-    // 2. Handle Thumbnail / Validity Result
+/// Verifies the video by checking its thumbnail.
+/// Returns true if valid, false otherwise.
+async fn verify_video_thumbnail(video_id: &str, ui_handle: &slint::Weak<AppWindow>) -> bool {
+    let thumbnail_result = fetch_thumbnail_data(video_id).await;
+
     match thumbnail_result {
         Ok((width, height, data)) => {
-            let ui_weak = ui_handle.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    let buffer = SharedPixelBuffer::clone_from_slice(&data, width, height);
-                    let img = Image::from_rgba8(buffer);
-                    ui.set_thumbnail_image(img);
-                    ui.set_status_message("Valid YouTube Link".into());
-                    ui.set_status_color(slint::Color::from_rgb_u8(0, 255, 0));
-                }
-            });
+            handle_thumbnail_success(ui_handle, width, height, data);
+            true
         }
         Err(_) => {
-            let ui_weak = ui_handle.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_status_message("Invalid Link or Network Error".into());
-                    ui.set_status_color(slint::Color::from_rgb_u8(255, 0, 0));
-                    // Reset fields
-                    ui.set_video_title("".into());
-                    ui.set_video_author("".into());
-                    ui.set_subtitle_list(Rc::new(VecModel::default()).into());
-                }
-            });
-            return; // Stop processing if invalid
+            handle_thumbnail_failure(ui_handle);
+            false
         }
     }
+}
 
-    // 3. Fetch Metadata & Subtitles Concurrenty
+fn handle_thumbnail_success(
+    ui_handle: &slint::Weak<AppWindow>,
+    width: u32,
+    height: u32,
+    data: Vec<u8>,
+) {
+    let ui_weak = ui_handle.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            let buffer = SharedPixelBuffer::clone_from_slice(&data, width, height);
+            let img = Image::from_rgba8(buffer);
+            ui.set_thumbnail_image(img);
+            ui.set_status_message("Valid YouTube Link".into());
+            ui.set_status_color(slint::Color::from_rgb_u8(0, 255, 0));
+        }
+    });
+}
+
+fn handle_thumbnail_failure(ui_handle: &slint::Weak<AppWindow>) {
+    let ui_weak = ui_handle.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = ui_weak.upgrade() {
+            ui.set_status_message("Invalid Link or Network Error".into());
+            ui.set_status_color(slint::Color::from_rgb_u8(255, 0, 0));
+            // Reset fields
+            ui.set_video_title("".into());
+            ui.set_video_author("".into());
+            ui.set_subtitle_list(Rc::new(VecModel::default()).into());
+        }
+    });
+}
+
+/// Fetches and updates metadata and subtitles.
+async fn fetch_and_update_details(video_id: &str, ui_handle: &slint::Weak<AppWindow>) {
+    // Fetch Metadata & Subtitles Concurrenty
     let (meta_result, subtitles_result) =
-        tokio::join!(fetch_video_details(&video_id), scan_subtitles(&video_id));
+        tokio::join!(fetch_video_details(video_id), scan_subtitles(video_id));
 
-    // 4. Update UI with Details
+    // Update UI with Details
     let ui_weak = ui_handle.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(ui) = ui_weak.upgrade() {
@@ -119,6 +142,23 @@ pub fn run_ui() -> Result<(), Box<dyn std::error::Error>> {
         });
     });
 
+    setup_save_location_handler(&ui);
+    setup_download_subtitle_handler(&ui);
+
+    // --- Split Text Callbacks ---
+    setup_split_handlers(&ui);
+
+    ui.run()?;
+    Ok(())
+}
+
+fn setup_split_handlers(ui: &AppWindow) {
+    setup_file_picker_handler(ui);
+    setup_folder_picker_handler(ui);
+    setup_execute_split_handler(ui);
+}
+
+fn setup_save_location_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_select_save_location(move |url| {
         let video_id = extract_id(&url).to_string();
@@ -140,7 +180,9 @@ pub fn run_ui() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     });
+}
 
+fn setup_download_subtitle_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_download_subtitle(move |url, path, lang| {
         let video_id = extract_id(&url).to_string();
@@ -169,18 +211,6 @@ pub fn run_ui() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     });
-
-    // --- Split Text Callbacks ---
-    setup_split_handlers(&ui);
-
-    ui.run()?;
-    Ok(())
-}
-
-fn setup_split_handlers(ui: &AppWindow) {
-    setup_file_picker_handler(ui);
-    setup_folder_picker_handler(ui);
-    setup_execute_split_handler(ui);
 }
 
 fn setup_file_picker_handler(ui: &AppWindow) {
@@ -225,6 +255,41 @@ fn setup_folder_picker_handler(ui: &AppWindow) {
     });
 }
 
+/// Executes the split logic based on the provided mode and parameters.
+async fn process_split_task(
+    input_path: String,
+    output_path: Option<String>,
+    mode_index: i32,
+    param: String,
+) -> Result<String, String> {
+    let mode = if mode_index == 0 {
+        let size = param
+            .parse::<usize>()
+            .map_err(|_| "Invalid chunk size: must be a positive number")?;
+        SplitMode::Auto {
+            chunk_size: size,
+            output_dir: output_path,
+        }
+    } else {
+        let ranges: Vec<String> = param.split_whitespace().map(|s| s.to_string()).collect();
+        if ranges.is_empty() {
+            return Err("No ranges provided".into());
+        }
+        SplitMode::Manual {
+            ranges,
+            output_dir: output_path,
+        }
+    };
+
+    // 1. Build Plan
+    let configs = tasks::build_split_plan(input_path.clone(), mode)?;
+
+    // 2. Execute Split
+    split_file(&input_path, &configs)?;
+
+    Ok(format!("Successfully split into {} parts.", configs.len()))
+}
+
 fn setup_execute_split_handler(ui: &AppWindow) {
     let ui_handle = ui.as_weak();
     ui.on_execute_split(move |input_path, output_path, mode_index, param| {
@@ -239,36 +304,7 @@ fn setup_execute_split_handler(ui: &AppWindow) {
 
         tokio::spawn(async move {
             // Determine logic based on mode_index (0 = Auto, 1 = Manual)
-            let result = async {
-                let mode = if mode_index == 0 {
-                    let size = param
-                        .parse::<usize>()
-                        .map_err(|_| "Invalid chunk size: must be a positive number")?;
-                    SplitMode::Auto {
-                        chunk_size: size,
-                        output_dir: output_path,
-                    }
-                } else {
-                    let ranges: Vec<String> =
-                        param.split_whitespace().map(|s| s.to_string()).collect();
-                    if ranges.is_empty() {
-                        return Err("No ranges provided".into());
-                    }
-                    SplitMode::Manual {
-                        ranges,
-                        output_dir: output_path,
-                    }
-                };
-
-                // 1. Build Plan
-                let configs = tasks::build_split_plan(input_path.clone(), mode)?;
-
-                // 2. Execute Split
-                split_file(&input_path, &configs)?;
-
-                Ok::<String, String>(format!("Successfully split into {} parts.", configs.len()))
-            }
-            .await;
+            let result = process_split_task(input_path, output_path, mode_index, param).await;
 
             // Update UI
             let _ = slint::invoke_from_event_loop(move || {
