@@ -2,6 +2,8 @@
 
 ไลบรารี Rust สำหรับจัดการซับไตเติ้ล YouTube ช่วยให้คุณสามารถดึงข้อมูลวิดีโอ, สแกนหาซับไตเติ้ลที่มี, และดาวน์โหลดออกมาเป็นไฟล์ SRT
 
+ไลบรารีนี้ทำงานโดยใช้ **[yt-transcript-rs](https://crates.io/crates/yt-transcript-rs)** เป็นเบื้องหลังในการติดต่อกับ YouTube API
+
 ## ฟีเจอร์ (Features)
 
 - **Fetch Video Details**: ดึงชื่อคลิปและชื่อช่อง (Author)

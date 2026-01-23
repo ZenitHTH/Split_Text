@@ -2,6 +2,8 @@
 
 A Rust library for interacting with YouTube subtitles. It allows you to fetch video details, list available transcripts, and download subtitles in SRT format.
 
+This crate leverages **[yt-transcript-rs](https://crates.io/crates/yt-transcript-rs)** to handle low-level interactions with YouTube's internal APIs.
+
 ## Features
 
 - **Fetch Video Details**: Get the title and author of a YouTube video.
