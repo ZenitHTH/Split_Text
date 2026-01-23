@@ -3,8 +3,14 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 pub enum SplitMode {
-    Manual(Vec<String>), // Holds the list: ["1-100", "200-300"]
-    Auto(usize),         // Holds the chunk size: 3000
+    Manual {
+        ranges: Vec<String>,
+        output_dir: Option<String>,
+    },
+    Auto {
+        chunk_size: usize,
+        output_dir: Option<String>,
+    },
 }
 
 // [EXISTING HELPER] - No changes
@@ -118,7 +124,20 @@ pub fn build_split_plan(input_path: String, mode: SplitMode) -> Result<Vec<Split
     validate_input_path(&input_path)?;
 
     let path_obj = Path::new(&input_path);
-    let parent_dir = path_obj.parent().unwrap_or_else(|| Path::new("."));
+
+    // Extract output_dir based on mode
+    let output_dir_opt = match &mode {
+        SplitMode::Manual { output_dir, .. } => output_dir.clone(),
+        SplitMode::Auto { output_dir, .. } => output_dir.clone(),
+    };
+
+    // Use provided output_dir or default to input file's parent
+    let parent_dir = if let Some(ref dir) = output_dir_opt {
+        Path::new(dir)
+    } else {
+        path_obj.parent().unwrap_or_else(|| Path::new("."))
+    };
+
     let file_stem = path_obj
         .file_stem()
         .ok_or("Invalid filename")?
@@ -127,8 +146,10 @@ pub fn build_split_plan(input_path: String, mode: SplitMode) -> Result<Vec<Split
 
     // 2. Delegate to the specific function
     match mode {
-        SplitMode::Manual(ranges) => plan_manual_split(&ranges, parent_dir, &file_stem, &extension),
-        SplitMode::Auto(chunk_size) => {
+        SplitMode::Manual { ranges, .. } => {
+            plan_manual_split(&ranges, parent_dir, &file_stem, &extension)
+        }
+        SplitMode::Auto { chunk_size, .. } => {
             plan_auto_split(&input_path, chunk_size, parent_dir, &file_stem, &extension)
         }
     }
