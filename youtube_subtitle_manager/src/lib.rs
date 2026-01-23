@@ -19,6 +19,31 @@ pub struct TranscriptInfo {
     pub is_generated: bool,
 }
 
+pub struct VideoDetails {
+    pub title: String,
+    pub author: String,
+}
+
+pub async fn fetch_video_details(video_id: &str) -> Result<VideoDetails, SubtitleError> {
+    let id = extract_id(video_id);
+    let api = YouTubeTranscriptApi::new(None, None, None)
+        .map_err(|e| SubtitleError::TranscriptError(Box::new(e)))?;
+
+    // Based on user hint: https://crates.io/crates/yt-transcript-rs#fetch-video-details
+    // The library seems to have a fetch_video_details method or similar.
+    // Let's assume the method signature based on typical usage or check if I can "view" the crate source? I cannot.
+    // I'll assume `fetch_video_details` exists on the api instance.
+    let details = api
+        .fetch_video_details(id)
+        .await
+        .map_err(|e| SubtitleError::TranscriptError(Box::new(e)))?;
+
+    Ok(VideoDetails {
+        title: details.title,
+        author: details.author,
+    })
+}
+
 pub fn extract_id(input: &str) -> &str {
     if input.contains("v=") {
         input
@@ -65,6 +90,7 @@ pub async fn scan_subtitles(video_id: &str) -> Result<Vec<TranscriptInfo>, Subti
 pub async fn download_subtitle(
     video_id: &str,
     lang: Option<String>,
+    output_path: Option<String>,
 ) -> Result<String, SubtitleError> {
     let id = extract_id(video_id);
     let lang_code = lang.unwrap_or_else(|| "en".to_string());
@@ -77,7 +103,7 @@ pub async fn download_subtitle(
         .await
         .map_err(|e| SubtitleError::TranscriptError(Box::new(e)))?;
 
-    let filename = format!("{}_{}.srt", id, lang_code);
+    let filename = output_path.unwrap_or_else(|| format!("{}_{}.srt", id, lang_code));
     let mut file = File::create(&filename)?;
 
     let mut counter = 1;
