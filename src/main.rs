@@ -8,8 +8,7 @@ use std::process;
 use tasks::{SplitMode, build_split_plan};
 use youtube_subtitle_manager::{download_subtitle, extract_id, scan_subtitles};
 
-use slint::ComponentHandle;
-use slint_ui::AppWindow;
+// slint imports removed as they are now handled in slint_ui.rs
 
 enum AppMode {
     Ui,
@@ -114,21 +113,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     match mode {
         AppMode::Ui => {
-            let ui = AppWindow::new()?;
-            let ui_handle = ui.as_weak();
-
-            ui.on_request_scan(move |url| {
-                let video_id = extract_id(&url).to_string();
-                let ui_handle = ui_handle.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = slint_ui::fetch_and_update_thumbnail(video_id, ui_handle).await
-                    {
-                        eprintln!("Thumbnail error: {}", e);
-                    }
-                });
-            });
-
-            ui.run()?;
+            slint_ui::run_ui()?;
             Ok(())
         }
         AppMode::Help => {
@@ -157,7 +142,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             let id = extract_id(&video_id);
             println!("⬇️  Downloading subtitle for ID: {} (Lang: {})", id, lang);
 
-            let filename = download_subtitle(&video_id, Some(lang)).await?;
+            let filename = download_subtitle(&video_id, Some(lang), None).await?;
 
             println!("✅ Successfully saved subtitle to: {}", filename);
             Ok(())
