@@ -1,14 +1,37 @@
-import { Button, VerticalBox, LineEdit } from "std-widgets.slint";
+import {
+    Button,
+    VerticalBox,
+    LineEdit,
+    HorizontalBox,
+    ListView,
+    ScrollView,
+} from "std-widgets.slint";
+
+export struct SubtitleItem {
+    code: string,
+    name: string,
+    is_generated: bool,
+}
 
 export component AppWindow inherits Window {
     width: 800px;
     height: 600px;
     title: "YouTube Subtitle Manager";
 
-    callback request-scan(string);
+    callback check-link(string);
 
     in-out property <string> thumbnail-url;
     in property <image> thumbnail-image;
+    in property <string> status-message;
+    in property <color> status-color;
+    in-out property <string> save-path;
+    in property <string> video-title: "Title";
+    in property <string> video-author: "Channel";
+    in property <[SubtitleItem]> subtitle-list;
+    in-out property <string> selected-subtitle-code;
+
+    callback select-save-location(string);
+    callback download-subtitle(string, string, string);
 
     VerticalBox {
         alignment: start;
@@ -22,9 +45,64 @@ export component AppWindow inherits Window {
         }
 
         Button {
-            text: "Scan Subtitles";
+            text: "Check Link";
             clicked => {
-                root.request-scan(input.text);
+                root.check-link(input.text);
+            }
+        }
+
+        Text {
+            // Youtube Title
+            text: root.status-message;
+            color: root.status-color;
+            visible: root.status-message != "";
+            horizontal-alignment: center;
+        }
+
+        HorizontalBox {
+            Image {
+                width: 320px;
+                height: 240px;
+                source: root.thumbnail-image;
+                image-fit: contain;
+            }
+
+            VerticalBox {
+                //show Title of Youtube Video
+                Text {
+                    text: root.video-title;
+                    font-size: 16px;
+                    wrap: word-wrap;
+                }
+                //show Channel of Youtube Video
+                Text {
+                    text: root.video-author;
+                    font-size: 14px;
+                    color: grey;
+                    wrap: word-wrap;
+                }
+
+                ListView {
+                    for item in root.subtitle-list: Rectangle {
+                        height: 30px;
+                        background: root.selected-subtitle-code == item.code ? #e0e0e0 : white;
+                        width: parent.width;
+                        TouchArea {
+                            clicked => {
+                                root.selected-subtitle-code = item.code;
+                            }
+                        }
+
+                        HorizontalBox {
+                            Text {
+                                text: item.name + " (" + item.code + ")" + (item.is_generated ? " [Auto]" : "");
+                                color: black;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -35,11 +113,34 @@ export component AppWindow inherits Window {
         }
         
         // Placeholder for the image (requires rust-side loading)
-        Image {
-             source: root.thumbnail-image;
-             width: 320px;
-             height: 180px;
-             image-fit: contain;
+        Rectangle {
+            vertical-stretch: 1; // Fill available vertical space
+ Rectangle {
+                min-width: 16px;
+                min-height: 16px; /* @lsp:ignore-node */ }
+        }
+
+        Text {
+            text: "Save Path: " + (root.save-path == "" ? "(None)" : root.save-path);
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            Button {
+                text: "Select Save Location";
+                clicked => {
+                    root.select-save-location(input.text);
+                }
+            }
+
+            Button {
+                text: "Download Subtitle";
+                enabled: root.save-path != "" && input.text != "" && root.selected-subtitle-code != "";
+                clicked => {
+                    root.download-subtitle(input.text, root.save-path, root.selected-subtitle-code);
+                }
+            }
         }
     }
 }
